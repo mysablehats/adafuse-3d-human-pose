@@ -22,7 +22,7 @@ from utils.transforms import get_affine_transform
 from utils.transforms import affine_transform
 import multiviews.cameras as cam_utils
 
-
+vid = cv2.VideoCapture(0)
 class JointsDataset(Dataset):
 
     def __init__(self, cfg, subset, is_train, transform=None):
@@ -125,20 +125,33 @@ class JointsDataset(Dataset):
         image_dir = 'images.zip@' if self.data_format == 'zip' else ''
         image_file = osp.join(self.root, db_rec['source'], image_dir, 'images',
                               db_rec['image'])
-        if self.data_format == 'zip':
+        #print(image_file)
+        if (self.data_format == 'zip') & False :
             from utils import zipreader
             data_numpy = zipreader.imread(
                 image_file, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         else:
-            data_numpy = cv2.imread(
-                image_file, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
-
+            pass
+            #data_numpy = cv2.imread(
+            #    image_file, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+#        print(data_numpy.shape)
+        #data_numpy = cv2.imread("/tmp/image.jpeg", cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        #cv2.imshow("1",frederico_py)
+        #cv2.waitKey(0)
+        ret, img = vid.read()
+        data_numpy = cv2.resize(img, (1280,960), interpolation= cv2.INTER_LINEAR)
+        #cv2.imshow("2",data_numpy)
+        #cv2.waitKey(0)
+        #cv2.destroyAllWindows()
         joints = db_rec['joints_2d'].copy()
         joints_vis = db_rec['joints_vis'].copy()
 
         center = np.array(db_rec['center']).copy()
         scale = np.array(db_rec['scale']).copy()
+        #print(center, scale)
         rotation = 0
+        center = np.array([640,480])
+        scale = np.array([4,4])
 
         if self.is_train:
             sf = self.scale_factor
@@ -155,9 +168,11 @@ class JointsDataset(Dataset):
             trans, (int(self.image_size[0]), int(self.image_size[1])),
             flags=cv2.INTER_LINEAR)
 
+        #print(type(input))
         if self.transform:
             input = self.transform(input)
-
+        
+        #print("im gonna cry%s"%type(input))
         for i in range(self.num_joints):
             if joints_vis[i, 0] > 0.0:
                 joints[i, 0:2] = affine_transform(joints[i, 0:2], trans)
@@ -207,6 +222,7 @@ class JointsDataset(Dataset):
             meta['joints_gt'] = db_rec['joints_gt']
         else:
             assert 0==1, 'No such dataset definition in JointDataset'
+        print(type(input))
         return input, target, target_weight, meta
 
     def generate_target(self, joints_3d, joints_vis):

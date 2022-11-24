@@ -123,7 +123,6 @@ def train(config, data, model, criterion, optim, epoch, output_dir,
                 save_debug_images(config, input[k], meta[k], target[k],
                                   pre[k] * 4, output[k], prefix)
 
-
 def validate(config,
              loader,
              dataset,
@@ -224,6 +223,134 @@ def validate(config,
                     save_debug_images(config, input[k], meta[k], target[k],
                                       pre[k] * 4, output[k], prefix)
 
+        detection_thresholds = [0.075, 0.05, 0.025, 0.0125, 6.25e-3]  # 150,100,50,25 mm
+        perf_indicators = []
+        cur_time = time.strftime("%Y-%m-%d-%H-%M", time.gmtime())
+        for thresh in detection_thresholds:
+            name_value, perf_indicator, per_grouping_detected = dataset.evaluate(all_preds, threshold=thresh)
+            perf_indicators.append(perf_indicator)
+            names = name_value.keys()
+            values = name_value.values()
+            num_values = len(name_value)
+            _, full_arch_name = get_model_name(config)
+            logger.info('Detection Threshold set to {} aka {}mm'.format(thresh, thresh * 2000.0))
+            logger.info('| Arch   ' +
+                        '  '.join(['| {: <5}'.format(name) for name in names]) + ' |')
+            logger.info('|--------' * (num_values + 1) + '|')
+            logger.info('| ' + '------ ' +
+                        ' '.join(['| {:.4f}'.format(value) for value in values]) +
+                        ' |')
+            logger.info('| ' + full_arch_name)
+            logger.info('Overall Perf on threshold {} is {}\n'.format(thresh, perf_indicator))
+            logger.info('\n')
+            if per_grouping_detected is not None:
+                df = pd.DataFrame(per_grouping_detected)
+                save_path = os.path.join(output_dir, 'grouping_detec_rate_{}_{}.csv'.format(thresh, cur_time))
+                df.to_csv(save_path)
+
+    return perf_indicators[2]
+
+
+def predict(config,
+             loader,
+             dataset,
+             model,
+             criterion,
+             output_dir,
+             writer_dict=None):
+
+    model.eval()
+    batch_time = AverageMeter()
+    losses = AverageMeter()
+    avg_acc = AverageMeter()
+
+    if config.DATASET.TEST_DATASET == 'multiview_h36m':
+        nviews = 4
+    elif config.DATASET.TEST_DATASET in ['totalcapture', 'panoptic', 'unrealcv']:
+        nviews = len(config.MULTI_CAMS.SELECTED_CAMS)
+    else:
+        assert 'Not defined dataset'
+    nsamples = len(dataset) * nviews
+    is_aggre = config.NETWORK.AGGRE
+    njoints = config.NETWORK.NUM_JOINTS
+    height = int(config.NETWORK.HEATMAP_SIZE[0])
+    width = int(config.NETWORK.HEATMAP_SIZE[1])
+    all_preds = np.zeros((nsamples, njoints, 3), dtype=np.float32)
+
+    idx = 0
+    with torch.no_grad():
+        end = time.time()
+        for i, (input, target, weight, meta) in enumerate(loader):
+            raw_features, aggre_features = model(input)
+            output = routing(raw_features, aggre_features, is_aggre, meta)
+
+            loss = 0
+            target_cuda = []
+            for t, w, o in zip(target, weight, output):
+                t = t.cuda(non_blocking=True)
+                w = w.cuda(non_blocking=True)
+                target_cuda.append(t)
+                loss += criterion(o, t, w)
+
+            if is_aggre:
+                for t, w, r in zip(target, weight, raw_features):
+                    t = t.cuda(non_blocking=True)
+                    w = w.cuda(non_blocking=True)
+                    loss += criterion(r, t, w)
+            target = target_cuda
+
+            nimgs = len(input) * input[0].size(0)
+            losses.update(loss.item(), nimgs)
+
+            nviews = len(output)
+            acc = [None] * nviews
+            cnt = [None] * nviews
+            pre = [None] * nviews
+            for j in range(nviews):
+                _, acc[j], cnt[j], pre[j] = accuracy(
+                    output[j].detach().cpu().numpy(),
+                    target[j].detach().cpu().numpy(),
+                    thr=0.083)
+            acc = np.mean(acc)
+            cnt = np.mean(cnt)
+            avg_acc.update(acc, cnt)
+
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            preds = np.zeros((nimgs, njoints, 3), dtype=np.float32)
+            heatmaps = np.zeros(
+                (nimgs, njoints, height, width), dtype=np.float32)
+            for k, o, m in zip(range(nviews), output, meta):
+                pred, maxval = get_final_preds(config,
+                                               o.clone().cpu().numpy(),
+                                               m['center'].numpy(),
+                                               m['scale'].numpy())
+                pred = pred[:, :, 0:2]
+                pred = np.concatenate((pred, maxval), axis=2)
+                preds[k::nviews] = pred
+                heatmaps[k::nviews] = o.clone().cpu().numpy()
+
+            all_preds[idx:idx + nimgs] = preds
+            # all_heatmaps[idx:idx + nimgs] = heatmaps
+            idx += nimgs
+
+            if i % config.PRINT_FREQ == 0:
+                msg = 'Test: [{0}/{1}]\t' \
+                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t' \
+                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t' \
+                      'Accuracy {acc.val:.3f} ({acc.avg:.3f})'.format(
+                          i, len(loader), batch_time=batch_time,
+                          loss=losses, acc=avg_acc)
+                logger.info(msg)
+
+                for k in range(len(input)):
+                    view_name = 'view_{}'.format(k + 1)
+                    prefix = '{}_{}_{:08}'.format(
+                        os.path.join(output_dir, 'validation'), view_name, i)
+                    save_debug_images(config, input[k], meta[k], target[k],
+                                      pre[k] * 4, output[k], prefix)
+            break
         detection_thresholds = [0.075, 0.05, 0.025, 0.0125, 6.25e-3]  # 150,100,50,25 mm
         perf_indicators = []
         cur_time = time.strftime("%Y-%m-%d-%H-%M", time.gmtime())
