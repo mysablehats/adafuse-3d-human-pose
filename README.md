@@ -1,4 +1,4 @@
-# * IMPORTANT NOTE: I've completely bastardized this. Not for external use yet. Get original code. *
+# *IMPORTANT NOTE: I've completely bastardized this. Not for external use yet. Get original code.*
 
 ## ORIGINAL HEADER: # [IJCV Article] *AdaFuse*: Adaptive Multiview Fusion for Accurate Human Pose Estimation in the Wild
 
