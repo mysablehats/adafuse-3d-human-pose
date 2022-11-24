@@ -1,13 +1,13 @@
 h5py
 tqdm
 pandas
-opencv_python
 json_tricks
 easydict
 numpy
 matplotlib
 scipy
 PyYAML
-scikit_learn
 GitPython
 tensorboardX
+protobuf==3.9.2
+flatbuffers==1.12

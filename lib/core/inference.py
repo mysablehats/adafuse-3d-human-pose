@@ -81,8 +81,10 @@ def get_final_preds(config, batch_heatmaps, center, scale):
     if isinstance(center, (list, tuple)):
         pass
     else:
-        center = center.cpu().numpy()
-        scale = scale.cpu().numpy()
+        if not isinstance(center, np.ndarray):
+            center = center.cpu().numpy()
+        if not isinstance(scale, np.ndarray):
+            scale = scale.cpu().numpy()
     # Transform back
     for i in range(coords.shape[0]):
         preds[i] = transform_preds(coords[i], center[i], scale[i],

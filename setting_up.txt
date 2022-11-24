@@ -1,0 +1,21 @@
+set -e
+source /lscratch/frekle/miniconda3/etc/profile.d/conda.sh
+
+conda create -y --name torch python=3.8
+
+conda activate torch
+
+#conda install -y pytorch torchvision torchaudio pytorch-cuda=11.3 -c pytorch -c nvidia
+
+#conda install -y pytorch==1.2.0 torchvision==0.4.0 'cudatoolkit<=11.2' -c pytorch
+
+/lscratch/frekle/miniconda3/envs/torch/bin/pip install --pre torch torchvision torchaudio -f https://download.pytorch.org/whl/nightly/cu114/torch_nightly.html --upgrade
+
+/lscratch/frekle/miniconda3/envs/torch/bin/pip install -r requirements2.txt --upgrade
+
+#conda env remove --name torch
+
+
+
+#ide here is to use python-vlc bindings to load an rtsp stream from the camera which we will use vlc on the other and use adafuse to estimate the thing
+# first I need to be able to infer from the model of a single pic 

@@ -114,6 +114,8 @@ def main():
     # writer_dict['writer'].add_graph(model, dump_input)
 
     gpus = [int(i) for i in config.GPUS.split(',')]
+    print("gpus %s"%gpus)
+    #return
     model = torch.nn.DataParallel(model, device_ids=gpus).cuda()
 
     criterion = JointsMSELoss(
